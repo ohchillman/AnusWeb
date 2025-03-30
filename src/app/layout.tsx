@@ -1,14 +1,12 @@
+'use client'
+
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { Navbar } from '@/components/navbar'
+import { ThemeProvider } from '@/lib/theme-context'
 
 const inter = Inter({ subsets: ['latin'] })
-
-export const metadata: Metadata = {
-  title: 'ANUS - Autonomous Networked Utility System',
-  description: 'Web interface for the ANUS AI agent framework',
-}
 
 export default function RootLayout({
   children,
@@ -18,12 +16,14 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <div className="min-h-screen flex flex-col">
-          <Navbar />
-          <div className="flex-1">
-            {children}
+        <ThemeProvider>
+          <div className="min-h-screen flex flex-col dark:bg-gray-900 dark:text-white transition-colors duration-200">
+            <Navbar />
+            <div className="flex-1">
+              {children}
+            </div>
           </div>
-        </div>
+        </ThemeProvider>
       </body>
     </html>
   )

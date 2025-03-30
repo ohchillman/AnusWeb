@@ -9,6 +9,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
 import { useTheme } from '@/lib/theme-context'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { 
+  TaskType, 
+  classifyTask, 
+  getTaskTypeDescription,
+  getTaskStatusMessage
+} from '@/lib/task-classifier'
+import { renderTaskData } from '@/components/task-renderers'
+import { generateTaskData, generateTaskResponse } from '@/lib/task-handlers'
 
 // Mock task history for persistence
 const STORAGE_KEY = 'anus_task_history';
@@ -22,6 +31,8 @@ export default function TasksPage() {
   const [progress, setProgress] = useState(0)
   const [taskHistory, setTaskHistory] = useState<any[]>([])
   const [activeTab, setActiveTab] = useState('new')
+  const [taskType, setTaskType] = useState<TaskType>(TaskType.GENERAL)
+  const [taskData, setTaskData] = useState<any>(null)
 
   // Load task history from localStorage
   useEffect(() => {
@@ -46,9 +57,14 @@ export default function TasksPage() {
     e.preventDefault()
     if (!task.trim()) return
     
+    // Classify the task
+    const detectedTaskType = classifyTask(task);
+    setTaskType(detectedTaskType);
+    
     setIsLoading(true)
     setProgress(0)
     setActiveTab('current')
+    setTaskData(null)
     
     // Simulate progress updates
     const progressInterval = setInterval(() => {
@@ -58,12 +74,19 @@ export default function TasksPage() {
       })
     }, 500)
     
-    // Generate a more realistic response based on the task and mode
+    // Generate task-specific data
+    let specificTaskData = null;
+    
+    // Use the task handlers to generate appropriate data
+    specificTaskData = generateTaskData(detectedTaskType, task);
+    setTaskData(specificTaskData);
+    
+    // Generate a response based on the task type and mode
     setTimeout(() => {
       clearInterval(progressInterval)
       setProgress(100)
       
-      const taskResponse = generateTaskResponse(task, mode)
+      let taskResponse = generateTaskResponse(task, mode, detectedTaskType, specificTaskData);
       
       const newResult = {
         id: Date.now().toString(),
@@ -71,7 +94,9 @@ export default function TasksPage() {
         mode: mode,
         answer: taskResponse,
         timestamp: new Date().toISOString(),
-        status: 'completed'
+        status: 'completed',
+        taskType: detectedTaskType,
+        taskData: specificTaskData
       }
       
       setResult(newResult)
@@ -79,35 +104,6 @@ export default function TasksPage() {
       setIsLoading(false)
       setTask('')
     }, 3000 + Math.random() * 2000) // Random time between 3-5 seconds
-  }
-
-  // Generate a more realistic response based on the task content
-  const generateTaskResponse = (taskText: string, taskMode: string) => {
-    const lowerTask = taskText.toLowerCase()
-    
-    // Check for specific task types
-    if (lowerTask.includes('summarize') || lowerTask.includes('summary')) {
-      return `I've analyzed the content and prepared a comprehensive summary as requested. The key points are organized in a logical structure with main ideas highlighted. ${taskMode === 'multi' ? 'Multiple specialized agents collaborated to ensure accuracy and completeness.' : 'The analysis was performed with attention to detail and context.'}`
-    }
-    
-    if (lowerTask.includes('research') || lowerTask.includes('find information')) {
-      return `Research complete. I've gathered information from multiple reliable sources, cross-referenced the data, and compiled the findings into a comprehensive report. ${taskMode === 'multi' ? 'The research team utilized specialized agents for different information domains.' : 'The research was conducted systematically with careful verification of sources.'}`
-    }
-    
-    if (lowerTask.includes('write') || lowerTask.includes('create content')) {
-      return `Content creation complete. I've crafted the requested content following best practices for structure, clarity, and engagement. The writing style has been tailored to the appropriate audience and purpose. ${taskMode === 'multi' ? 'Multiple specialized agents contributed to different aspects of the content creation process.' : 'The content was created with careful attention to quality and coherence.'}`
-    }
-    
-    if (lowerTask.includes('analyze') || lowerTask.includes('analysis')) {
-      return `Analysis complete. I've examined the data thoroughly and identified key patterns, trends, and insights. The analysis includes both quantitative metrics and qualitative observations. ${taskMode === 'multi' ? 'Multiple specialized agents contributed different analytical perspectives.' : 'The analysis was conducted using comprehensive methodologies.'}`
-    }
-    
-    if (lowerTask.includes('code') || lowerTask.includes('program') || lowerTask.includes('develop')) {
-      return `Development task complete. The code has been written according to best practices, with clean architecture, appropriate comments, and error handling. ${taskMode === 'multi' ? 'Multiple specialized agents handled different aspects of the development process.' : 'The development was completed with attention to quality and maintainability.'}`
-    }
-    
-    // Default response for other types of tasks
-    return `Task completed successfully. I've processed your request: "${taskText}" using ${taskMode} mode. The execution leveraged the ANUS framework's advanced capabilities to deliver optimal results. All subtasks were completed with high accuracy and efficiency.`
   }
 
   return (
@@ -190,12 +186,8 @@ export default function TasksPage() {
                   <div className="space-y-2 text-left border p-4 rounded-md dark:border-slate-700">
                     <p className="text-sm font-medium dark:text-gray-300">Task: {task}</p>
                     <p className="text-sm dark:text-gray-300">Mode: {mode}</p>
-                    <p className="text-sm dark:text-gray-300">Status: {
-                      progress < 30 ? 'Analyzing request...' :
-                      progress < 60 ? 'Processing task components...' :
-                      progress < 90 ? 'Generating response...' :
-                      'Finalizing results...'
-                    }</p>
+                    <p className="text-sm dark:text-gray-300">Type: {getTaskTypeDescription(taskType)}</p>
+                    <p className="text-sm dark:text-gray-300">Status: {getTaskStatusMessage(taskType, progress)}</p>
                   </div>
                 </div>
               ) : result ? (
@@ -211,10 +203,17 @@ export default function TasksPage() {
                   </div>
                   
                   <div>
+                    <h3 className="font-medium dark:text-gray-200">Type</h3>
+                    <p className="text-gray-700 dark:text-gray-300">{getTaskTypeDescription(result.taskType)}</p>
+                  </div>
+                  
+                  <div>
                     <h3 className="font-medium dark:text-gray-200">Result</h3>
-                    <div className="bg-gray-50 dark:bg-slate-700 p-4 rounded-md">
-                      <p className="dark:text-gray-200">{result.answer}</p>
-                    </div>
+                    {renderTaskData(result.taskType, result.taskData) || (
+                      <div className="bg-gray-50 dark:bg-slate-700 p-4 rounded-md">
+                        <p className="dark:text-gray-200">{result.answer}</p>
+                      </div>
+                    )}
                   </div>
                   
                   <div>
@@ -257,7 +256,8 @@ export default function TasksPage() {
                       </div>
                       <div className="flex items-center text-sm text-gray-500 dark:text-gray-400 mb-2">
                         <span className="mr-4">Mode: {historyItem.mode}</span>
-                        <span>Status: {historyItem.status}</span>
+                        <span className="mr-4">Status: {historyItem.status}</span>
+                        <span>Type: {getTaskTypeDescription(historyItem.taskType || TaskType.GENERAL)}</span>
                       </div>
                       <Button variant="outline" size="sm" onClick={() => {
                         setResult(historyItem)
